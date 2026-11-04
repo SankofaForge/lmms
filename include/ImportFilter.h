@@ -47,7 +47,8 @@ public:
 
 	// tries to import given file to given track-container by having all
 	// available import-filters to try to import the file
-	static void import( const QString & _file_to_import,
+	// returns false if no filter could import the file
+	static bool import( const QString & _file_to_import,
 						TrackContainer* tc );
 
 

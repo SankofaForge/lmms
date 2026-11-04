@@ -28,6 +28,7 @@
 
 #include "ImportFilter.h"
 #include "Engine.h"
+#include "GuiApplication.h"
 #include "TrackContainer.h"
 #include "PluginFactory.h"
 #include "ProjectJournal.h"
@@ -37,6 +38,23 @@ namespace lmms
 {
 
 using std::unique_ptr;
+
+namespace
+{
+
+// Without a GUI (for example when rendering from the command line) there is
+// no QApplication, so message boxes cannot be shown. Print to stderr instead.
+void reportImportError(QMessageBox::Icon icon, const QString& title, const QString& text)
+{
+	if (gui::getGUI() == nullptr)
+	{
+		qWarning("%s: %s", qUtf8Printable(title), qUtf8Printable(text));
+		return;
+	}
+	QMessageBox(icon, title, text, QMessageBox::Ok).exec();
+}
+
+} // namespace
 
 ImportFilter::ImportFilter( const QString & _file_name,
 							const Descriptor * _descriptor ) :
@@ -49,7 +67,7 @@ ImportFilter::ImportFilter( const QString & _file_name,
 
 
 
-void ImportFilter::import( const QString & _file_to_import,
+bool ImportFilter::import( const QString & _file_to_import,
 							TrackContainer* tc )
 {
 	bool successful = false;
@@ -76,17 +94,17 @@ void ImportFilter::import( const QString & _file_to_import,
 
 	if( successful == false )
 	{
-		QMessageBox::information( nullptr,
+		reportImportError(QMessageBox::Information,
 			TrackContainer::tr( "Couldn't import file" ),
 			TrackContainer::tr( "Couldn't find a filter for "
 						"importing file %1.\n"
 						"You should convert this file "
 						"into a format supported by "
 						"LMMS using another software."
-						).arg( _file_to_import ),
-					QMessageBox::Ok,
-					QMessageBox::NoButton );
+						).arg( _file_to_import ));
 	}
+
+	return successful;
 }
 
 
@@ -96,7 +114,7 @@ bool ImportFilter::openFile()
 {
 	if( m_file.open( QFile::ReadOnly ) == false )
 	{
-		QMessageBox::critical( nullptr,
+		reportImportError(QMessageBox::Critical,
 			TrackContainer::tr( "Couldn't open file" ),
 			TrackContainer::tr( "Couldn't open file %1 "
 						"for reading.\nPlease make "
@@ -104,9 +122,7 @@ bool ImportFilter::openFile()
 						"permission to the file and "
 						"the directory containing the "
 						"file and try again!" ).arg(
-							m_file.fileName() ),
-					QMessageBox::Ok,
-					QMessageBox::NoButton );
+							m_file.fileName() ));
 		return false;
 	}
 	return true;
