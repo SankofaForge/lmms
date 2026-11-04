@@ -29,6 +29,7 @@
 #include <QMessageBox>
 #include <QProgressDialog>
 
+#include <memory>
 #include <sstream>
 #include <unordered_map>
 
@@ -103,6 +104,12 @@ bool MidiImport::tryImport(TrackContainer* tc)
 				"importing this MIDI file. You should download "
 				"a General MIDI soundfont, specify it in "
 				"settings dialog and try again."));
+	}
+	else if (gui::getGUI() == nullptr && ConfigManager::inst()->sf2File().isEmpty())
+	{
+		qWarning("MIDI import: no default soundfont is configured, so the "
+			"imported tracks will be silent. Set paths/defaultsf2 in the "
+			"configuration file (see --config).");
 	}
 #else
 	if (gui::getGUI() != nullptr)
@@ -275,20 +282,27 @@ bool MidiImport::readSMF(TrackContainer* tc)
 {
 	constexpr int MIDI_CC_COUNT = 128 + 1; // 0-127 (128) + pitch bend
 	constexpr int preTrackSteps = 2;
-	QProgressDialog pd(TrackContainer::tr("Importing MIDI-file..."),
-	TrackContainer::tr("Cancel"), 0, preTrackSteps, gui::getGUI()->mainWindow());
-	pd.setWindowTitle(TrackContainer::tr("Please wait..."));
-	pd.setWindowModality(Qt::WindowModal);
-	pd.setMinimumDuration(0);
+	// The progress dialog needs the main window, so it only exists with a GUI.
+	// Command line renders import without one.
+	std::unique_ptr<QProgressDialog> pd;
+	if (gui::getGUI() != nullptr)
+	{
+		pd = std::make_unique<QProgressDialog>(TrackContainer::tr("Importing MIDI-file..."),
+			TrackContainer::tr("Cancel"), 0, preTrackSteps, gui::getGUI()->mainWindow());
+		pd->setWindowTitle(TrackContainer::tr("Please wait..."));
+		pd->setWindowModality(Qt::WindowModal);
+		pd->setMinimumDuration(0);
+	}
+	const auto setProgress = [&pd](int value) { if (pd) { pd->setValue(value); } };
 
-	pd.setValue(0);
+	setProgress(0);
 
 	std::istringstream stream(readAllData().toStdString());
 	auto seq = new Alg_seq(stream, true);
 	seq->convert_to_beats();
 
-	pd.setMaximum(seq->tracks() + preTrackSteps);
-	pd.setValue(1);
+	if (pd) { pd->setMaximum(seq->tracks() + preTrackSteps); }
+	setProgress(1);
 
 	// 128 CC + Pitch Bend
 	auto ccs = std::array<smfMidiCC, MIDI_CC_COUNT>{};
@@ -329,7 +343,7 @@ bool MidiImport::readSMF(TrackContainer* tc)
 	timeSigNumeratorPat->updateLength();
 	timeSigDenominatorPat->updateLength();
 
-	pd.setValue(2);
+	setProgress(2);
 
 	// Tempo stuff
 	auto tt = dynamic_cast<AutomationTrack*>(Track::create(Track::Type::Automation, Engine::getSong()));
@@ -376,7 +390,7 @@ bool MidiImport::readSMF(TrackContainer* tc)
 	{
 		QString trackName = QString(tr("Track") + " %1").arg(t);
 		Alg_track* trk = seq->track(t);
-		pd.setValue(t + preTrackSteps);
+		setProgress(t + preTrackSteps);
 
 		for (auto& cc : ccs) { cc.clear(); }
 
