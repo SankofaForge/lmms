@@ -164,6 +164,8 @@ void printHelp()
 		"  dump <in>                             Dump XML of compressed file <in>\n"
 		"  compress <in>                         Compress file <in>\n"
 		"  render <project> [options...]         Render given project file\n"
+		"                                        A MIDI or Hydrogen file is imported\n"
+		"                                        into a new project first\n"
 		"  rendertracks <project> [options...]   Render each track to a different file\n"
 		"  upgrade <in> [out]                    Upgrade file <in> and save as <out>\n"
 		"                                        Standard out is used if no output file\n"
@@ -712,8 +714,23 @@ int main( int argc, char * * argv )
 		Engine::init( true );
 		destroyEngine = true;
 
-		printf( "Loading project...\n" );
-		Engine::getSong()->loadProject( fileToLoad );
+		const QString suffix = QFileInfo(fileToLoad).suffix().toLower();
+		if (suffix == "mmp" || suffix == "mmpz" || suffix == "mpt")
+		{
+			printf( "Loading project...\n" );
+			Engine::getSong()->loadProject( fileToLoad );
+		}
+		else
+		{
+			// Not a project file: let the import filters (MIDI, Hydrogen)
+			// build a new song from it
+			printf("Importing %s...\n", fileToLoad.toUtf8().constData());
+			Engine::getSong()->createNewProject();
+			if (!ImportFilter::import(fileToLoad, Engine::getSong()))
+			{
+				exit(EXIT_FAILURE);
+			}
+		}
 		if( Engine::getSong()->isEmpty() )
 		{
 			printf("The project %s is empty, aborting!\n", fileToLoad.toUtf8().constData() );
